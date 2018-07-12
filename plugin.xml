@@ -141,7 +141,7 @@
         </config-file>
         <header-file src="src/ios/Geofence-Plugin-Bridging-Header.h" />
         <source-file src="src/ios/GeofencePlugin.swift"/>
-        <source-file src="src/ios/HTTPHandler.swift"/>
+        <source-file src="src/ios/HttpHandler.swift"/>
         <source-file src="src/ios/SwiftData.swift"/>
         <source-file src="src/ios/SwiftyJson.swift"/>
         <source-file src="src/ios/KeychainItemAccessibility.swift"/>
