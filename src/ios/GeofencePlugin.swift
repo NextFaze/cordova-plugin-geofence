@@ -45,28 +45,22 @@ func log(_ messages: [String]) {
         log("Plugin initialization")
         //let faker = GeofenceFaker(manager: geoNotificationManager)
         //faker.start()
-        promptForNotificationPermission()
 
-        geoNotificationManager = GeoNotificationManager()
-        geoNotificationManager.registerPermissions()
-
-        let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
-
-        log(warnings)
-        log(errors)
-
-        let result: CDVPluginResult
-
-        if ok {
-            result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
-        } else {
-            result = CDVPluginResult(
-                status: CDVCommandStatus_ILLEGAL_ACCESS_EXCEPTION,
-                messageAs: (errors + warnings).joined(separator: "\n")
-            )
+        self.geoNotificationManager = GeoNotificationManager()
+        self.geoNotificationManager.registerPermissions { [unowned self] in
+            let (ok, warnings, errors) = self.geoNotificationManager.checkRequirements()
+            log("warnings: \(warnings)")
+            log("errors: \(errors)")
+            
+            let result: CDVPluginResult
+            if ok {
+                result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
+            } else {
+                result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: (errors + warnings).joined(separator: "\n"))
+            }
+            
+            self.commandDelegate!.send(result, callbackId: command.callbackId)
         }
-
-        commandDelegate!.send(result, callbackId: command.callbackId)
     }
 
     func deviceReady(_ command: CDVInvokedUrlCommand) {
@@ -78,14 +72,6 @@ func log(_ messages: [String]) {
         log("Ping")
         let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate!.send(pluginResult, callbackId: command.callbackId)
-    }
-
-    func promptForNotificationPermission() {
-        UIApplication.shared.registerUserNotificationSettings(UIUserNotificationSettings(
-            types: [UIUserNotificationType.sound, UIUserNotificationType.alert, UIUserNotificationType.badge],
-            categories: nil
-            )
-        )
     }
 
     func addOrUpdate(_ command: CDVInvokedUrlCommand) {
@@ -247,15 +233,65 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     let remoteServerPostStringName = "remoteServerPostString"
     let remoteServerAccessTokenName = "remoteServerAccessToken"
 
+    private var authCompletionHandler: (() -> Void)? = nil
+    private var isRequestingLocationAuthorization: Bool = false
+    private var isRequestingNotificationAuthorization: Bool = false
+    private var haveRequestedNotificationAuthorization: Bool {
+        get { return UserDefaults.standard.bool(forKey: "GeofencePlugin.haveRequestedNotificationAuthorization") }
+        set { UserDefaults.standard.set(newValue, forKey: "GeofencePlugin.haveRequestedNotificationAuthorization") }
+    }
+    
     override init() {
         log("GeoNotificationManager init")
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: .UIApplicationDidBecomeActive, object: nil)
     }
-
-    func registerPermissions() {
-        locationManager.requestAlwaysAuthorization()
+    
+    func registerPermissions(completion: @escaping (() -> Void)) {
+        log("GeoNotificationManager registerPermissions")
+        self.authCompletionHandler = completion
+        self.requestLocationAuthorization()
+    }
+    
+    private func requestLocationAuthorization() {
+        log("GeoNotificationManager requestLocationAuthorization")
+        if CLLocationManager.authorizationStatus() == .notDetermined {
+            self.isRequestingLocationAuthorization = true
+            self.locationManager.requestAlwaysAuthorization()
+        } else {
+            self.requestNotificationAuthorization()
+        }
+    }
+    
+    private func requestNotificationAuthorization() {
+        log("GeoNotificationManager requestNotificationAuthorization")
+        if self.haveRequestedNotificationAuthorization {
+            self.completeRegisteringPermissions()
+        } else {
+            self.isRequestingNotificationAuthorization = true
+            UIApplication.shared.registerUserNotificationSettings(UIUserNotificationSettings(
+                types: [UIUserNotificationType.sound, UIUserNotificationType.alert, UIUserNotificationType.badge],
+                categories: nil
+                )
+            )
+        }
+    }
+    
+    private func completeRegisteringPermissions() {
+        self.authCompletionHandler?()
+        self.authCompletionHandler = nil
+    }
+    
+    @objc private func applicationDidBecomeActive() {
+        log("GeoNotificationManager applicationDidBecomeActive")
+        if self.isRequestingNotificationAuthorization {
+            self.isRequestingNotificationAuthorization = false
+            self.haveRequestedNotificationAuthorization = true
+            self.completeRegisteringPermissions()
+        }
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
@@ -289,46 +325,32 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func checkRequirements() -> (Bool, [String], [String]) {
+        log("GeoNotificationManager checkRequirements")
         var errors = [String]()
-        var warnings = [String]()
 
         if (!CLLocationManager.isMonitoringAvailable(for: CLRegion.self)) {
             errors.append("Geofencing not available")
         }
 
         if (!CLLocationManager.locationServicesEnabled()) {
-            errors.append("Error: Locationservices not enabled")
+            errors.append("Locationservices not enabled")
         }
 
         let authStatus = CLLocationManager.authorizationStatus()
 
         if (authStatus != CLAuthorizationStatus.authorizedAlways) {
-            errors.append("Warning: Location always permissions not granted")
+            errors.append("Location always permissions not granted")
         }
 
         if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-            if notificationSettings.types == UIUserNotificationType() {
+            if !notificationSettings.types.contains(.alert) {
                 errors.append("Error: notification permission missing")
-            } else {
-                if !notificationSettings.types.contains(.sound) {
-                    warnings.append("Warning: notification settings - sound permission missing")
-                }
-
-                if !notificationSettings.types.contains(.alert) {
-                    warnings.append("Warning: notification settings - alert permission missing")
-                }
-
-                if !notificationSettings.types.contains(.badge) {
-                    warnings.append("Warning: notification settings - badge permission missing")
-                }
             }
-        } else {
-            errors.append("Error: notification permission missing")
         }
 
         let ok = (errors.count == 0)
 
-        return (ok, warnings, errors)
+        return (ok, [], errors)
     }
 
     func getWatchedGeoNotifications() -> [JSON]? {
@@ -364,6 +386,15 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
         }
     }
 
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        print("didChangeAuthorization status \(CLLocationManager.string(for: status))")
+        if status == .notDetermined { return }
+        if self.isRequestingLocationAuthorization {
+            self.isRequestingNotificationAuthorization = false
+            self.requestNotificationAuthorization()
+        }
+    }
+    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         log("update location")
     }
