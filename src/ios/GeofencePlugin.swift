@@ -549,3 +549,29 @@ class GeoNotificationStore {
         }
     }
 }
+
+extension CLLocationManager {
+    
+    static func string(for status: CLAuthorizationStatus) -> String {
+        var statusString = "?"
+        switch status {
+        case .notDetermined:
+            statusString = "Not Determined"
+            
+        case .restricted:
+            statusString = "Restricted"
+            
+        case .denied:
+            statusString = "Denied"
+            
+        case .authorizedWhenInUse:
+            statusString = "Authorized When In Use"
+            
+        case .authorizedAlways:
+            statusString = "Authorized Always"
+        }
+        return statusString
+    }
+    
+}
+
