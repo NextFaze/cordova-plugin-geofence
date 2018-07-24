@@ -24,7 +24,6 @@ func log(_ messages: [String]) {
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
     lazy var geoNotificationManager = GeoNotificationManager()
-    let priority = DispatchQueue.GlobalQueuePriority.default
 
     override func pluginInitialize () {
         NotificationCenter.default.addObserver(
@@ -90,7 +89,7 @@ func log(_ messages: [String]) {
     }
 
     func addOrUpdate(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             // do some task
             for geo in command.arguments {
                 self.geoNotificationManager.addOrUpdateGeoNotification(JSON(geo))
@@ -103,7 +102,7 @@ func log(_ messages: [String]) {
     }
 
     func getWatched(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             let watched = self.geoNotificationManager.getWatchedGeoNotifications()!
             let watchedJsonString = watched.description
             DispatchQueue.main.async {
@@ -114,7 +113,7 @@ func log(_ messages: [String]) {
     }
 
     func remove(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             for id in command.arguments {
                 self.geoNotificationManager.removeGeoNotification(id as! String)
             }
@@ -126,7 +125,7 @@ func log(_ messages: [String]) {
     }
 
     func removeAll(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             self.geoNotificationManager.removeAllGeoNotifications()
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
@@ -161,7 +160,7 @@ func log(_ messages: [String]) {
     }
 
     func upsertRemoteServerSettings(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             KeychainWrapper.standard.set(command.argument(at: 0) as! String, forKey: self.geoNotificationManager.remoteServerURLName, withAccessibility: .afterFirstUnlock)
             KeychainWrapper.standard.set(command.argument(at: 1) as! String, forKey: self.geoNotificationManager.remoteServerPostStringName, withAccessibility: .afterFirstUnlock)
             KeychainWrapper.standard.set(command.argument(at: 2) as! String, forKey: self.geoNotificationManager.remoteServerAccessTokenName, withAccessibility: .afterFirstUnlock)
@@ -173,7 +172,7 @@ func log(_ messages: [String]) {
     }
 
     func clearRemoteServerSettings(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerURLName)
             KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerPostStringName)
             KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerAccessTokenName)
@@ -200,7 +199,6 @@ func log(_ messages: [String]) {
 // class for faking crossing geofences
 @available(iOS 8.0, *)
 class GeofenceFaker {
-    let priority = DispatchQueue.GlobalQueuePriority.default
     let geoNotificationManager: GeoNotificationManager
 
     init(manager: GeoNotificationManager) {
@@ -208,7 +206,7 @@ class GeofenceFaker {
     }
 
     func start() {
-         DispatchQueue.global(priority: priority).async {
+        DispatchQueue.global(qos: .default).async {
             while (true) {
                 log("FAKER")
                 let notify = arc4random_uniform(4)
