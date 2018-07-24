@@ -373,7 +373,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFinishDeferredUpdatesWithError error: Error?) {
-        log("deferred fail error: \(error)")
+        log("deferred fail error: \(String(describing: error))")
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
@@ -452,7 +452,7 @@ class GeoNotificationStore {
     func createDBStructure() {
         let (tables, err) = SD.existingTables()
 
-        if (err != nil) {
+        if let err = err {
             log("Cannot fetch sqlite tables: \(err)")
             return
         }
@@ -482,7 +482,7 @@ class GeoNotificationStore {
         let err = SD.executeChange("INSERT INTO GeoNotifications (Id, Data) VALUES(?, ?)",
             withArgs: [id as AnyObject, geoNotification.description as AnyObject])
 
-        if err != nil {
+        if let err = err {
             log("Error while adding \(id) GeoNotification: \(err)")
         }
     }
@@ -492,7 +492,7 @@ class GeoNotificationStore {
         let err = SD.executeChange("UPDATE GeoNotifications SET Data = ? WHERE Id = ?",
             withArgs: [geoNotification.description as AnyObject, id as AnyObject])
 
-        if err != nil {
+        if let err = err {
             log("Error while adding \(id) GeoNotification: \(err)")
         }
     }
@@ -500,7 +500,7 @@ class GeoNotificationStore {
     func findById(_ id: String) -> JSON? {
         let (resultSet, err) = SD.executeQuery("SELECT * FROM GeoNotifications WHERE Id = ?", withArgs: [id as AnyObject])
 
-        if err != nil {
+        if let err = err {
             //there was an error during the query, handle it here
             log("Error while fetching \(id) GeoNotification table: \(err)")
             return nil
@@ -518,7 +518,7 @@ class GeoNotificationStore {
     func getAll() -> [JSON]? {
         let (resultSet, err) = SD.executeQuery("SELECT * FROM GeoNotifications")
 
-        if err != nil {
+        if let err = err {
             //there was an error during the query, handle it here
             log("Error while fetching from GeoNotifications table: \(err)")
             return nil
@@ -536,7 +536,7 @@ class GeoNotificationStore {
     func remove(_ id: String) {
         let err = SD.executeChange("DELETE FROM GeoNotifications WHERE Id = ?", withArgs: [id as AnyObject])
 
-        if err != nil {
+        if let err = err {
             log("Error while removing \(id) GeoNotification: \(err)")
         }
     }
@@ -544,7 +544,7 @@ class GeoNotificationStore {
     func clear() {
         let err = SD.executeChange("DELETE FROM GeoNotifications")
 
-        if err != nil {
+        if let err = err {
             log("Error while deleting all from GeoNotifications: \(err)")
         }
     }
