@@ -10,8 +10,6 @@ import AudioToolbox
 import WebKit
 
 let TAG = "GeofencePlugin"
-let iOS8 = floor(NSFoundationVersionNumber) > floor(NSFoundationVersionNumber_iOS_7_1)
-let iOS7 = floor(NSFoundationVersionNumber) <= floor(NSFoundationVersionNumber_iOS_7_1)
 
 func log(_ message: String){
     NSLog("%@ - %@", TAG, message)
@@ -48,9 +46,7 @@ func log(_ messages: [String]) {
         log("Plugin initialization")
         //let faker = GeofenceFaker(manager: geoNotificationManager)
         //faker.start()
-        if iOS8 {
-            promptForNotificationPermission()
-        }
+        promptForNotificationPermission()
 
         geoNotificationManager = GeoNotificationManager()
         geoNotificationManager.registerPermissions()
@@ -261,9 +257,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func registerPermissions() {
-        if iOS8 {
-            locationManager.requestAlwaysAuthorization()
-        }
+        locationManager.requestAlwaysAuthorization()
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
@@ -314,26 +308,24 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             errors.append("Warning: Location always permissions not granted")
         }
 
-        if (iOS8) {
-            if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-                if notificationSettings.types == UIUserNotificationType() {
-                    errors.append("Error: notification permission missing")
-                } else {
-                    if !notificationSettings.types.contains(.sound) {
-                        warnings.append("Warning: notification settings - sound permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.alert) {
-                        warnings.append("Warning: notification settings - alert permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.badge) {
-                        warnings.append("Warning: notification settings - badge permission missing")
-                    }
-                }
-            } else {
+        if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
+            if notificationSettings.types == UIUserNotificationType() {
                 errors.append("Error: notification permission missing")
+            } else {
+                if !notificationSettings.types.contains(.sound) {
+                    warnings.append("Warning: notification settings - sound permission missing")
+                }
+
+                if !notificationSettings.types.contains(.alert) {
+                    warnings.append("Warning: notification settings - alert permission missing")
+                }
+
+                if !notificationSettings.types.contains(.badge) {
+                    warnings.append("Warning: notification settings - badge permission missing")
+                }
             }
+        } else {
+            errors.append("Error: notification permission missing")
         }
 
         let ok = (errors.count == 0)
