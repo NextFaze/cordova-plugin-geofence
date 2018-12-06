@@ -1,4 +1,3 @@
-
 //
 //  GeofencePlugin.swift
 //  ionic-geofence
@@ -6,6 +5,7 @@
 //  Created by tomasz on 07/10/14.
 //
 //
+
 import Foundation
 import AudioToolbox
 import WebKit
@@ -31,6 +31,7 @@ func log(_ messages: [String]) {
     let priority = DispatchQueue.GlobalQueuePriority.default
 
     override func pluginInitialize () {
+        log("Base pluign initialize")
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(GeofencePlugin.didReceiveLocalNotification(_:)),
@@ -44,6 +45,7 @@ func log(_ messages: [String]) {
             name: NSNotification.Name(rawValue: "handleTransition"),
             object: nil
         )
+        //self.geoNotificationManager.ping();
     }
 
     func initialize(_ command: CDVInvokedUrlCommand) {
@@ -66,6 +68,7 @@ func log(_ messages: [String]) {
 
         if ok {
             result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
+            self.geoNotificationManager.ping();
         } else {
             result = CDVPluginResult(
                 status: CDVCommandStatus_ILLEGAL_ACCESS_EXCEPTION,
@@ -85,6 +88,7 @@ func log(_ messages: [String]) {
         log("Ping")
         let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate!.send(pluginResult, callbackId: command.callbackId)
+        self.geoNotificationManager.ping();
     }
 
     func promptForNotificationPermission() {
@@ -145,8 +149,8 @@ func log(_ messages: [String]) {
         log("didReceiveTransition")
         if let geoNotificationString = notification.object as? String {
 
-            let js = "setTimeout('geofence.onTransitionReceived([" + geoNotificationString + "])',0)"
-
+            //let js = "setTimeout('geofence.onTransitionReceived([" + geoNotificationString + "])',0)"
+            let js = "setTimeout('geofence.onTransitionReceived([" + geoNotificationString + "])',1)"
             evaluateJs(js)
         }
     }
@@ -225,14 +229,21 @@ class GeofenceFaker {
 
 @available(iOS 8.0, *)
 class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
-    let locationManager = CLLocationManager()
+    lazy var locationManager = CLLocationManager()
     let store = GeoNotificationStore()
 
     override init() {
         log("GeoNotificationManager init")
         super.init()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        DispatchQueue.main.async {
+            self.locationManager = CLLocationManager()
+            self.locationManager.delegate = self
+            self.locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        }
+    }
+    
+    func ping() {
+        log("pong");
     }
 
     func registerPermissions() {
@@ -290,25 +301,28 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
         }
 
         if (iOS8) {
-            if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-                if notificationSettings.types == UIUserNotificationType() {
-                    errors.append("Error: notification permission missing")
+            log("check notification settings")
+           // DispatchQueue.main.async {
+                if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
+                    if notificationSettings.types == UIUserNotificationType() {
+                        errors.append("Error: notification permission missing")
+                    } else {
+                        if !notificationSettings.types.contains(.sound) {
+                            warnings.append("Warning: notification settings - sound permission missing")
+                        }
+
+                        if !notificationSettings.types.contains(.alert) {
+                            warnings.append("Warning: notification settings - alert permission missing")
+                        }
+
+                        if !notificationSettings.types.contains(.badge) {
+                            warnings.append("Warning: notification settings - badge permission missing")
+                        }
+                    }
                 } else {
-                    if !notificationSettings.types.contains(.sound) {
-                        warnings.append("Warning: notification settings - sound permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.alert) {
-                        warnings.append("Warning: notification settings - alert permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.badge) {
-                        warnings.append("Warning: notification settings - badge permission missing")
-                    }
+                    errors.append("Error: notification permission missing")
                 }
-            } else {
-                errors.append("Error: notification permission missing")
-            }
+           // }
         }
 
         let ok = (errors.count == 0)
@@ -394,8 +408,8 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             geoNotification["transitionType"].int = transitionType
 
             if geoNotification["notification"].isExists() {
-                callUrl(geo: geoNotification, transitionType: transitionType)
-                //notifyAbout(geoNotification)
+//                callUrl(geo: geoNotification, transitionType: transitionType)
+                notifyAbout(geoNotification)
             }
             NotificationCenter.default.post(name: Notification.Name(rawValue: "handleTransition"), object: geoNotification.rawString(String.Encoding.utf8.rawValue, options: []))
         }
