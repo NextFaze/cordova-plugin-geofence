@@ -1,3 +1,4 @@
+
 //
 //  GeofencePlugin.swift
 //  ionic-geofence
@@ -8,8 +9,11 @@
 import Foundation
 import AudioToolbox
 import WebKit
+import CoreLocation
 
 let TAG = "GeofencePlugin"
+let iOS8 = floor(NSFoundationVersionNumber) > floor(NSFoundationVersionNumber_iOS_7_1)
+let iOS7 = floor(NSFoundationVersionNumber) <= floor(NSFoundationVersionNumber_iOS_7_1)
 
 func log(_ message: String){
     NSLog("%@ - %@", TAG, message)
@@ -24,6 +28,7 @@ func log(_ messages: [String]) {
 @available(iOS 8.0, *)
 @objc(HWPGeofencePlugin) class GeofencePlugin : CDVPlugin {
     lazy var geoNotificationManager = GeoNotificationManager()
+    let priority = DispatchQueue.GlobalQueuePriority.default
 
     override func pluginInitialize () {
         NotificationCenter.default.addObserver(
@@ -45,22 +50,30 @@ func log(_ messages: [String]) {
         log("Plugin initialization")
         //let faker = GeofenceFaker(manager: geoNotificationManager)
         //faker.start()
-
-        self.geoNotificationManager = GeoNotificationManager()
-        self.geoNotificationManager.registerPermissions { [unowned self] in
-            let (ok, warnings, errors) = self.geoNotificationManager.checkRequirements()
-            log("warnings: \(warnings)")
-            log("errors: \(errors)")
-            
-            let result: CDVPluginResult
-            if ok {
-                result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
-            } else {
-                result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: (errors + warnings).joined(separator: "\n"))
-            }
-            
-            self.commandDelegate!.send(result, callbackId: command.callbackId)
+        if iOS8 {
+            promptForNotificationPermission()
         }
+
+        geoNotificationManager = GeoNotificationManager()
+        geoNotificationManager.registerPermissions()
+
+        let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
+
+        log(warnings)
+        log(errors)
+
+        let result: CDVPluginResult
+
+        if ok {
+            result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: warnings.joined(separator: "\n"))
+        } else {
+            result = CDVPluginResult(
+                status: CDVCommandStatus_ILLEGAL_ACCESS_EXCEPTION,
+                messageAs: (errors + warnings).joined(separator: "\n")
+            )
+        }
+
+        commandDelegate!.send(result, callbackId: command.callbackId)
     }
 
     func deviceReady(_ command: CDVInvokedUrlCommand) {
@@ -74,8 +87,16 @@ func log(_ messages: [String]) {
         commandDelegate!.send(pluginResult, callbackId: command.callbackId)
     }
 
+    func promptForNotificationPermission() {
+        UIApplication.shared.registerUserNotificationSettings(UIUserNotificationSettings(
+            types: [UIUserNotificationType.sound, UIUserNotificationType.alert, UIUserNotificationType.badge],
+            categories: nil
+            )
+        )
+    }
+
     func addOrUpdate(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
+        DispatchQueue.global(priority: priority).async {
             // do some task
             for geo in command.arguments {
                 self.geoNotificationManager.addOrUpdateGeoNotification(JSON(geo))
@@ -88,7 +109,7 @@ func log(_ messages: [String]) {
     }
 
     func getWatched(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
+        DispatchQueue.global(priority: priority).async {
             let watched = self.geoNotificationManager.getWatchedGeoNotifications()!
             let watchedJsonString = watched.description
             DispatchQueue.main.async {
@@ -99,7 +120,7 @@ func log(_ messages: [String]) {
     }
 
     func remove(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
+        DispatchQueue.global(priority: priority).async {
             for id in command.arguments {
                 self.geoNotificationManager.removeGeoNotification(id as! String)
             }
@@ -111,7 +132,7 @@ func log(_ messages: [String]) {
     }
 
     func removeAll(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
+        DispatchQueue.global(priority: priority).async {
             self.geoNotificationManager.removeAllGeoNotifications()
             DispatchQueue.main.async {
                 let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
@@ -120,7 +141,7 @@ func log(_ messages: [String]) {
         }
     }
 
-    func didReceiveTransition (_ notification: Notification) {
+    @objc func didReceiveTransition (_ notification: Notification) {
         log("didReceiveTransition")
         if let geoNotificationString = notification.object as? String {
 
@@ -130,7 +151,7 @@ func log(_ messages: [String]) {
         }
     }
 
-    func didReceiveLocalNotification (_ notification: Notification) {
+    @objc func didReceiveLocalNotification (_ notification: Notification) {
         log("didReceiveLocalNotification")
         if UIApplication.shared.applicationState != UIApplicationState.active {
             var data = "undefined"
@@ -141,30 +162,6 @@ func log(_ messages: [String]) {
                 let js = "setTimeout('geofence.onNotificationClicked(" + data + ")',0)"
 
                 evaluateJs(js)
-            }
-        }
-    }
-
-    func upsertRemoteServerSettings(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
-            KeychainWrapper.standard.set(command.argument(at: 0) as! String, forKey: self.geoNotificationManager.remoteServerURLName, withAccessibility: .afterFirstUnlock)
-            KeychainWrapper.standard.set(command.argument(at: 1) as! String, forKey: self.geoNotificationManager.remoteServerPostStringName, withAccessibility: .afterFirstUnlock)
-            KeychainWrapper.standard.set(command.argument(at: 2) as! String, forKey: self.geoNotificationManager.remoteServerAccessTokenName, withAccessibility: .afterFirstUnlock)
-            DispatchQueue.main.async {
-                let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
-                self.commandDelegate!.send(pluginResult, callbackId: command.callbackId)
-            }
-        }
-    }
-
-    func clearRemoteServerSettings(_ command: CDVInvokedUrlCommand) {
-        DispatchQueue.global(qos: .default).async {
-            KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerURLName)
-            KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerPostStringName)
-            KeychainWrapper.standard.removeObject(forKey: self.geoNotificationManager.remoteServerAccessTokenName)
-            DispatchQueue.main.async {
-                let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK)
-                self.commandDelegate!.send(pluginResult, callbackId: command.callbackId)
             }
         }
     }
@@ -185,6 +182,7 @@ func log(_ messages: [String]) {
 // class for faking crossing geofences
 @available(iOS 8.0, *)
 class GeofenceFaker {
+    let priority = DispatchQueue.GlobalQueuePriority.default
     let geoNotificationManager: GeoNotificationManager
 
     init(manager: GeoNotificationManager) {
@@ -192,7 +190,7 @@ class GeofenceFaker {
     }
 
     func start() {
-        DispatchQueue.global(qos: .default).async {
+         DispatchQueue.global(priority: priority).async {
             while (true) {
                 log("FAKER")
                 let notify = arc4random_uniform(4)
@@ -229,68 +227,17 @@ class GeofenceFaker {
 class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     let locationManager = CLLocationManager()
     let store = GeoNotificationStore()
-    let remoteServerURLName = "remoteServerURL"
-    let remoteServerPostStringName = "remoteServerPostString"
-    let remoteServerAccessTokenName = "remoteServerAccessToken"
 
-    private var authCompletionHandler: (() -> Void)? = nil
-    private var isRequestingLocationAuthorization: Bool = false
-    private var isRequestingNotificationAuthorization: Bool = false
-    private var haveRequestedNotificationAuthorization: Bool {
-        get { return UserDefaults.standard.bool(forKey: "GeofencePlugin.haveRequestedNotificationAuthorization") }
-        set { UserDefaults.standard.set(newValue, forKey: "GeofencePlugin.haveRequestedNotificationAuthorization") }
-    }
-    
     override init() {
         log("GeoNotificationManager init")
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: .UIApplicationDidBecomeActive, object: nil)
     }
-    
-    func registerPermissions(completion: @escaping (() -> Void)) {
-        log("GeoNotificationManager registerPermissions")
-        self.authCompletionHandler = completion
-        self.requestLocationAuthorization()
-    }
-    
-    private func requestLocationAuthorization() {
-        log("GeoNotificationManager requestLocationAuthorization")
-        if CLLocationManager.authorizationStatus() == .notDetermined {
-            self.isRequestingLocationAuthorization = true
-            self.locationManager.requestAlwaysAuthorization()
-        } else {
-            self.requestNotificationAuthorization()
-        }
-    }
-    
-    private func requestNotificationAuthorization() {
-        log("GeoNotificationManager requestNotificationAuthorization")
-        if self.haveRequestedNotificationAuthorization {
-            self.completeRegisteringPermissions()
-        } else {
-            self.isRequestingNotificationAuthorization = true
-            UIApplication.shared.registerUserNotificationSettings(UIUserNotificationSettings(
-                types: [UIUserNotificationType.sound, UIUserNotificationType.alert, UIUserNotificationType.badge],
-                categories: nil
-                )
-            )
-        }
-    }
-    
-    private func completeRegisteringPermissions() {
-        self.authCompletionHandler?()
-        self.authCompletionHandler = nil
-    }
-    
-    @objc private func applicationDidBecomeActive() {
-        log("GeoNotificationManager applicationDidBecomeActive")
-        if self.isRequestingNotificationAuthorization {
-            self.isRequestingNotificationAuthorization = false
-            self.haveRequestedNotificationAuthorization = true
-            self.completeRegisteringPermissions()
+
+    func registerPermissions() {
+        if iOS8 {
+            locationManager.requestAlwaysAuthorization()
         }
     }
 
@@ -325,32 +272,48 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func checkRequirements() -> (Bool, [String], [String]) {
-        log("GeoNotificationManager checkRequirements")
         var errors = [String]()
+        var warnings = [String]()
 
         if (!CLLocationManager.isMonitoringAvailable(for: CLRegion.self)) {
             errors.append("Geofencing not available")
         }
 
         if (!CLLocationManager.locationServicesEnabled()) {
-            errors.append("Locationservices not enabled")
+            errors.append("Error: Locationservices not enabled")
         }
 
         let authStatus = CLLocationManager.authorizationStatus()
 
         if (authStatus != CLAuthorizationStatus.authorizedAlways) {
-            errors.append("Location always permissions not granted")
+            errors.append("Warning: Location always permissions not granted")
         }
 
-        if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-            if !notificationSettings.types.contains(.alert) {
+        if (iOS8) {
+            if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
+                if notificationSettings.types == UIUserNotificationType() {
+                    errors.append("Error: notification permission missing")
+                } else {
+                    if !notificationSettings.types.contains(.sound) {
+                        warnings.append("Warning: notification settings - sound permission missing")
+                    }
+
+                    if !notificationSettings.types.contains(.alert) {
+                        warnings.append("Warning: notification settings - alert permission missing")
+                    }
+
+                    if !notificationSettings.types.contains(.badge) {
+                        warnings.append("Warning: notification settings - badge permission missing")
+                    }
+                }
+            } else {
                 errors.append("Error: notification permission missing")
             }
         }
 
         let ok = (errors.count == 0)
 
-        return (ok, [], errors)
+        return (ok, warnings, errors)
     }
 
     func getWatchedGeoNotifications() -> [JSON]? {
@@ -372,7 +335,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
         store.remove(id)
         let region = getMonitoredRegion(id)
         if (region != nil) {
-            log("Stopping monitoring region \(id)")
+            log("Stoping monitoring region \(id)")
             locationManager.stopMonitoring(for: region!)
         }
     }
@@ -381,20 +344,11 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
         store.clear()
         for object in locationManager.monitoredRegions {
             let region = object
-            log("Stopping monitoring region \(region.identifier)")
+            log("Stoping monitoring region \(region.identifier)")
             locationManager.stopMonitoring(for: region)
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        print("didChangeAuthorization status \(CLLocationManager.string(for: status))")
-        if status == .notDetermined { return }
-        if self.isRequestingLocationAuthorization {
-            self.isRequestingNotificationAuthorization = false
-            self.requestNotificationAuthorization()
-        }
-    }
-    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         log("update location")
     }
@@ -404,7 +358,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFinishDeferredUpdatesWithError error: Error?) {
-        log("deferred fail error: \(String(describing: error))")
+        log("deferred fail error: \(error)")
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
@@ -440,20 +394,53 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
             geoNotification["transitionType"].int = transitionType
 
             if geoNotification["notification"].isExists() {
-                notifyAbout(geoNotification)
+                callUrl(geo: geoNotification, transitionType: transitionType)
+                //notifyAbout(geoNotification)
             }
-
-            let remoteServerURL: String? = KeychainWrapper.standard.string(forKey: self.remoteServerURLName)
-            let remoteServerPostString: String! = KeychainWrapper.standard.string(forKey: self.remoteServerPostStringName) ?? ""
-            let remoteServerAccessToken: String? = KeychainWrapper.standard.string(forKey: self.remoteServerAccessTokenName)
-            if remoteServerURL != nil && remoteServerAccessToken != nil {
-                HTTPHandler.postToServer(postURL: remoteServerURL, postString: remoteServerPostString, accessToken: remoteServerAccessToken)
-            }
-
             NotificationCenter.default.post(name: Notification.Name(rawValue: "handleTransition"), object: geoNotification.rawString(String.Encoding.utf8.rawValue, options: []))
         }
     }
 
+    /* This should call the URL with method (eg POST) and postData */
+    func callUrl(geo: JSON, transitionType: Int) {
+        let method = "POST";
+        let url = geo["notification"]["url"].stringValue;    
+        let deviceToken = geo["notification"]["deviceToken"].stringValue;
+        let corpProp = geo["notification"]["corpProp"].stringValue;
+        let clientID = geo["notification"]["clientID"].stringValue;
+        var postData = geo["notification"]["bodyEnter"].stringValue;
+        if (transitionType == 2) {
+            postData = geo["notification"]["bodyExit"].stringValue;
+        }
+        let token = geo["notification"]["token"].stringValue;
+        log("callUrl "+url)
+        let urlString = url;
+        guard let endpointUrl = URL(string: urlString) else {
+            return
+        }
+        var request = URLRequest(url: endpointUrl)
+        request.httpMethod = method
+        request.httpBody = postData.data(using: String.Encoding.utf8);
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type");
+        request.addValue("*/*", forHTTPHeaderField: "Accept");
+        request.addValue(token, forHTTPHeaderField: "Token");
+        request.addValue(deviceToken, forHTTPHeaderField: "DeviceToken");
+        request.addValue(clientID, forHTTPHeaderField: "Client-ID");
+        request.addValue(corpProp, forHTTPHeaderField: "CorpProp");
+        
+        let task = URLSession.shared.dataTask(with: request) {
+            (data, response, error) in
+            guard error == nil else {
+                log("failed to call "+url);
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse {
+                log("callUrl Returned: \(httpResponse.statusCode)")
+            }
+        }
+        task.resume()
+    }
+    
     func notifyAbout(_ geo: JSON) {
         log("Creating notification")
         let notification = UILocalNotification()
@@ -483,7 +470,7 @@ class GeoNotificationStore {
     func createDBStructure() {
         let (tables, err) = SD.existingTables()
 
-        if let err = err {
+        if (err != nil) {
             log("Cannot fetch sqlite tables: \(err)")
             return
         }
@@ -513,7 +500,7 @@ class GeoNotificationStore {
         let err = SD.executeChange("INSERT INTO GeoNotifications (Id, Data) VALUES(?, ?)",
             withArgs: [id as AnyObject, geoNotification.description as AnyObject])
 
-        if let err = err {
+        if err != nil {
             log("Error while adding \(id) GeoNotification: \(err)")
         }
     }
@@ -523,7 +510,7 @@ class GeoNotificationStore {
         let err = SD.executeChange("UPDATE GeoNotifications SET Data = ? WHERE Id = ?",
             withArgs: [geoNotification.description as AnyObject, id as AnyObject])
 
-        if let err = err {
+        if err != nil {
             log("Error while adding \(id) GeoNotification: \(err)")
         }
     }
@@ -531,7 +518,7 @@ class GeoNotificationStore {
     func findById(_ id: String) -> JSON? {
         let (resultSet, err) = SD.executeQuery("SELECT * FROM GeoNotifications WHERE Id = ?", withArgs: [id as AnyObject])
 
-        if let err = err {
+        if err != nil {
             //there was an error during the query, handle it here
             log("Error while fetching \(id) GeoNotification table: \(err)")
             return nil
@@ -549,7 +536,7 @@ class GeoNotificationStore {
     func getAll() -> [JSON]? {
         let (resultSet, err) = SD.executeQuery("SELECT * FROM GeoNotifications")
 
-        if let err = err {
+        if err != nil {
             //there was an error during the query, handle it here
             log("Error while fetching from GeoNotifications table: \(err)")
             return nil
@@ -567,7 +554,7 @@ class GeoNotificationStore {
     func remove(_ id: String) {
         let err = SD.executeChange("DELETE FROM GeoNotifications WHERE Id = ?", withArgs: [id as AnyObject])
 
-        if let err = err {
+        if err != nil {
             log("Error while removing \(id) GeoNotification: \(err)")
         }
     }
@@ -575,34 +562,8 @@ class GeoNotificationStore {
     func clear() {
         let err = SD.executeChange("DELETE FROM GeoNotifications")
 
-        if let err = err {
+        if err != nil {
             log("Error while deleting all from GeoNotifications: \(err)")
         }
     }
 }
-
-extension CLLocationManager {
-    
-    static func string(for status: CLAuthorizationStatus) -> String {
-        var statusString = "?"
-        switch status {
-        case .notDetermined:
-            statusString = "Not Determined"
-            
-        case .restricted:
-            statusString = "Restricted"
-            
-        case .denied:
-            statusString = "Denied"
-            
-        case .authorizedWhenInUse:
-            statusString = "Authorized When In Use"
-            
-        case .authorizedAlways:
-            statusString = "Authorized Always"
-        }
-        return statusString
-    }
-    
-}
-
