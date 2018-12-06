@@ -302,27 +302,25 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
         if (iOS8) {
             log("check notification settings")
-           // DispatchQueue.main.async {
-                if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-                    if notificationSettings.types == UIUserNotificationType() {
-                        errors.append("Error: notification permission missing")
-                    } else {
-                        if !notificationSettings.types.contains(.sound) {
-                            warnings.append("Warning: notification settings - sound permission missing")
-                        }
-
-                        if !notificationSettings.types.contains(.alert) {
-                            warnings.append("Warning: notification settings - alert permission missing")
-                        }
-
-                        if !notificationSettings.types.contains(.badge) {
-                            warnings.append("Warning: notification settings - badge permission missing")
-                        }
-                    }
-                } else {
+            if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
+                if notificationSettings.types == UIUserNotificationType() {
                     errors.append("Error: notification permission missing")
+                } else {
+                    if !notificationSettings.types.contains(.sound) {
+                        warnings.append("Warning: notification settings - sound permission missing")
+                    }
+
+                    if !notificationSettings.types.contains(.alert) {
+                        warnings.append("Warning: notification settings - alert permission missing")
+                    }
+
+                    if !notificationSettings.types.contains(.badge) {
+                        warnings.append("Warning: notification settings - badge permission missing")
+                    }
                 }
-           // }
+            } else {
+                errors.append("Error: notification permission missing")
+            }
         }
 
         let ok = (errors.count == 0)
