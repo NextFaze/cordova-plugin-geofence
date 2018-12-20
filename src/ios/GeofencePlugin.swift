@@ -254,11 +254,11 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
         log("GeoNotificationManager addOrUpdate")
-
-        let (_, warnings, errors) = checkRequirements()
-
-        log(warnings)
-        log(errors)
+        DispatchQueue.main.sync {
+            let (_, warnings, errors) = checkRequirements()
+            log(warnings)
+            log(errors)
+        }
 
         let location = CLLocationCoordinate2DMake(
             geoNotification["latitude"].doubleValue,
