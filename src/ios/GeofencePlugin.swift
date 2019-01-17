@@ -100,6 +100,10 @@ func log(_ messages: [String]) {
     }
 
     func addOrUpdate(_ command: CDVInvokedUrlCommand) {
+        let (_, warnings, errors) = self.geoNotificationManager.checkRequirements()
+        log(warnings)
+        log(errors)
+
         DispatchQueue.global(priority: priority).async {
             // do some task
             for geo in command.arguments {
@@ -254,12 +258,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate {
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
         log("GeoNotificationManager addOrUpdate")
-        DispatchQueue.main.sync {
-            let (_, warnings, errors) = checkRequirements()
-            log(warnings)
-            log(errors)
-        }
-
+        
         let location = CLLocationCoordinate2DMake(
             geoNotification["latitude"].doubleValue,
             geoNotification["longitude"].doubleValue
